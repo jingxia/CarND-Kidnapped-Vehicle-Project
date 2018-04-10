@@ -18,6 +18,11 @@
 #include "particle_filter.h"
 #include "helper_functions.h"
 
+namespace {
+
+const double EPI = 0.0001;
+
+}
 
 using namespace std;
 
@@ -26,9 +31,8 @@ void ParticleFilter::init(double x, double y, double theta, int numOfParticles, 
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
-    num_particles = numOfParticles;
 
-    weights.assign(num_particles, 1);
+    num_particles = numOfParticles;
 
     default_random_engine gen;
     normal_distribution<double> dist_x(x, std[0]);
@@ -45,7 +49,7 @@ void ParticleFilter::init(double x, double y, double theta, int numOfParticles, 
         particle.weight = 1;
 
         particles.push_back(particle);
-    }
+   }
 
     is_initialized = true;
 
@@ -64,9 +68,21 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
    
     for (size_t i = 0; i != num_particles; ++i)
     {
-      particles[i].x += (velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta)) + dist_x(gen));
-      particles[i].y += (velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t)) + dist_y(gen));
-      particles[i].theta += (delta_t * yaw_rate + dist_theta(gen));
+      if (fabs(yaw_rate) < EPI)
+      {
+        particles[i].x += delta_t * velocity * cos(particles[i].theta);  
+        particles[i].y += delta_t * velocity * sin(particles[i].theta);  
+      }
+      else
+      {
+        particles[i].x += velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
+        particles[i].y += velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
+        particles[i].theta += (delta_t * yaw_rate + dist_theta(gen));
+      }
+
+      particles[i].x += dist_x(gen);
+      particles[i].y += dist_y(gen);
+      particles[i].theta += dist_theta(gen);
     }
 }
 
@@ -106,6 +122,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
 	double std_x = std_landmark[0];
 	double std_y = std_landmark[1];
 
@@ -144,7 +161,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
             double best_y = map_landmarks.landmark_list[best_landmark].y_f;
 
             particles[i].weight *= 1/(2 * M_PI * std_x * std_y) * exp(-pow(tobs_x - best_x, 2)/(2*pow(std_x, 2)) - pow(tobs_y - best_y, 2)/(2*pow(std_y, 2)));
-            
 	    }
 
       }
@@ -156,6 +172,26 @@ void ParticleFilter::resample() {
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
+	vector<double> weights;
+
+	for (size_t i = 0; i != particles.size(); ++i)
+	{
+	  weights.push_back(particles[i].weight);
+    }
+
+    default_random_engine gen;	
+
+    discrete_distribution<int> distribution(weights.begin(), weights.end());
+
+    vector<Particle> new_particles;
+
+    for (size_t i = 0; i != particles.size(); ++i)
+    {
+      int idx = distribution(gen);
+      new_particles.push_back(particles[idx]);
+    }
+
+    particles = new_particles;
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
